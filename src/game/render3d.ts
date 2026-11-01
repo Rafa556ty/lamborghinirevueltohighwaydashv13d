@@ -3,6 +3,7 @@
 // produces every frame. Sim coordinates are pixels; `ppm` converts to metres.
 // World: player near the origin, forward = -Z, road scenery scrolls with pz.
 import * as THREE from "three";
+import { Cockpit, type CameraMode } from "./cockpit";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { RenderSnapshot } from "./engine";
 import type { CarType } from "./traffic";
@@ -238,6 +239,10 @@ export class Scene3D {
   private radars: THREE.Group[] = [];
 
   private player: THREE.Group | null = null;
+  private cockpit = new Cockpit();
+  private cameraMode: CameraMode = "chase";
+  private seat = new THREE.Vector3();
+  private ahead = new THREE.Vector3();
   private wing: THREE.Object3D | undefined;
   private aero: AeroState = { lift: 0, tilt: 0 };
   private buildings: THREE.InstancedMesh | undefined;
@@ -327,6 +332,8 @@ export class Scene3D {
 
     this.tunnelLamp = new THREE.PointLight(0xffc98a, 0, 26, 1.6);
     this.scene.add(this.tunnelLamp);
+    this.camera.add(this.cockpit.group);
+    this.scene.add(this.camera);
 
     this.headL = this.makeHeadlight();
     this.headR = this.makeHeadlight();
@@ -665,6 +672,21 @@ export class Scene3D {
     this.player = car;
     this.wing = car.getObjectByName('active-wing');
     this.scene.add(car);
+    this.applyCameraMode();
+  }
+
+  setCameraMode(mode: CameraMode) {
+    this.cameraMode = mode;
+    this.applyCameraMode();
+  }
+
+  private applyCameraMode() {
+    const inside = this.cameraMode === "interior";
+    this.cockpit.group.visible = inside;
+    this.player?.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh && o.name !== "road-beam") o.visible = !inside;
+    });
+    this.canvas.dataset["cameraMode"] = this.cameraMode;
   }
 
   private makeFlame(car: THREE.Group, tip: THREE.Vector3): Flame {
@@ -876,8 +898,25 @@ export class Scene3D {
       this.camera.updateProjectionMatrix();
     }
     const sh = s.shake * 0.012;
+    this.cockpit.update(s.player.rot, dt);
+    if (this.cameraMode === "interior" && this.player) {
+      const ifov = 68 + speedK * 8;
+      if (Math.abs(this.camera.fov - ifov) > 0.05) {
+        this.camera.fov = ifov;
+        this.camera.updateProjectionMatrix();
+      }
+      this.player.updateMatrixWorld();
+      this.player.localToWorld(this.seat.set(-0.38, 1.02, 0.15));
+      this.player.localToWorld(this.ahead.set(-0.38, 0.85, -20));
+      this.camera.position.copy(this.seat);
+      this.camera.position.x += (Math.random() - 0.5) * sh * 0.4;
+      this.camera.position.y += (Math.random() - 0.5) * sh * 0.4;
+      this.camera.lookAt(this.ahead);
+      if (import.meta.env.DEV) this.canvas.dataset["wheelAngle"] = this.cockpit.wheelAngle.toFixed(3);
+    } else {
     this.camera.position.set(this.camX * 0.9 + (Math.random() - 0.5) * sh, 2.05 - speedK * 0.25 + (Math.random() - 0.5) * sh, 6.6 - speedK * 0.8);
     this.camera.lookAt(this.camX * 0.95, 0.85, -16);
+    }
 
     // flash / police danger overlay
     if (this.overlay) {
