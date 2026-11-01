@@ -10,16 +10,14 @@ export { normalizeCar } from "./normalize-car";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 import revueltoAsset from "@/assets/models/revuelto-mobile.glb.asset.json";
-import m4Asset from "@/assets/models/bmw-m4-traffic.glb.asset.json";
 import mustangAsset from "@/assets/models/mustang-gt-traffic.glb.asset.json";
 
-export type ModelKey = "revuelto" | "m4" | "mustang";
+export type ModelKey = "revuelto" | "mustang";
 
 type ModelSpec = { url: string; length: number; /** extra yaw (radians) when the file's nose isn't detected */ yaw: number };
 
 export const MODEL_SPECS: Record<ModelKey, ModelSpec> = {
   revuelto: { url: revueltoAsset.url, length: 4.95, yaw: 0 },
-  m4: { url: m4Asset.url, length: 4.8, yaw: 0 },
   mustang: { url: mustangAsset.url, length: 4.8, yaw: 0 },
 };
 
