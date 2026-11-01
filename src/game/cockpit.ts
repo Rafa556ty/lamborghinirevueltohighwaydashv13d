@@ -13,7 +13,7 @@ export class Cockpit {
     const g = this.group;
     const dark = new THREE.MeshStandardMaterial({ color: 0x0b0b0d, roughness: 0.85 });
     const alcantara = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 1 });
-    const carbon = new THREE.MeshStandardMaterial({ color: 0x1d1f22, roughness: 0.35, metalness: 0.6 });
+    const carbon = new THREE.MeshStandardMaterial({ color: 0x151618, roughness: 0.5, metalness: 0.3 });
     const accent = new THREE.MeshStandardMaterial({ color: 0xd4a017, roughness: 0.4, metalness: 0.5 });
     const screen = new THREE.MeshStandardMaterial({ color: 0x0a0f14, emissive: 0x1f6fb0, emissiveIntensity: 0.6 });
 
@@ -46,7 +46,7 @@ export class Cockpit {
       g.add(pillar);
     }
     const roof = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.12, 0.5), dark);
-    roof.position.set(0.35, 0.42, -0.55);
+    roof.position.set(0.35, 0.75, -0.4);
     g.add(roof);
     // Door sills
     for (const x of [-0.75, 1.45]) {
@@ -76,7 +76,7 @@ export class Cockpit {
     column.position.z = -0.15;
     this.wheel.add(column);
     const mount = new THREE.Group();
-    mount.position.set(0, -0.36, -0.5);
+    mount.position.set(0, -0.3, -0.78);
     mount.rotation.x = -0.35;
     mount.add(this.wheel);
     g.add(mount);
