@@ -1002,13 +1002,21 @@ export class RacingEngine {
             }
           } else {
             // Idle state: restore normal cruise speed and stay in lane
+            const leader = lane[i - 1];
+            if (leader && leader.z - t.z < this.spanM * 4 && t.cruise > leader.speed + 8 && t.signalTimer > 3) {
+              const target = [t.lane - 1, t.lane + 1].find(to => laneChangeOk(this.traffic, t, to, {gapAhead: 24, gapBehind: 22, wallLen: this.spanM * WALL_LEN}));
+              if (target !== undefined) {
+                t.targetLane = target; t.signal = target < t.lane ? -1 : 1;
+                t.signalTimer = 0; t.yieldState = 'changing';
+              }
+            }
             if (t.originalCruise !== undefined && Math.abs(t.cruise - t.originalCruise) > 1) {
               t.cruise += (t.originalCruise - t.cruise) * (1 - Math.exp(-2.5 * dt));
             }
             const curLaneX = this.laneX(t.lane);
             t.x += (curLaneX - t.x) * (1 - Math.exp(-12 * dt));
             t.rot = 0;
-            t.signal = 0;
+            if (t.yieldState === 'idle') t.signal = 0;
           }
 
           // 2. Anti-Collision and safe spacing (cars never enter inside each other)

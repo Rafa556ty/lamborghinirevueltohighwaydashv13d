@@ -18,6 +18,7 @@ export function isolateActiveWing(root: THREE.Group): THREE.Group | null {
     const subset = (indices: number[]) => {
       const geo = new THREE.BufferGeometry();
       for (const [name, a] of Object.entries(source.attributes)) {
+        if (!(a instanceof THREE.BufferAttribute) && !(a instanceof THREE.InterleavedBufferAttribute)) continue;
         const values = new Float32Array(indices.length * a.itemSize);
         indices.forEach((id,i) => { for(let c=0;c<a.itemSize;c++) values[i*a.itemSize+c]=a.getComponent(id,c); });
         geo.setAttribute(name,new THREE.BufferAttribute(values,a.itemSize));
