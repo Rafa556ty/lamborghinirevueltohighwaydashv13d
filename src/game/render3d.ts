@@ -7,6 +7,9 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import type { RenderSnapshot } from "./engine";
 import type { CarType } from "./traffic";
 import { loadCar, type ModelKey } from "./models3d";
+import { createTrafficModel, type TrafficModelKey } from './traffic-models';
+import { TRAFFIC_DRAW_AHEAD } from './traffic-rules';
+import { stepAero, type AeroState } from './aero';
 import { AdaptiveResolution, phoneProfile } from "./quality";
 import { BRIDGES, CYCLE, SIGN_GANTRIES, SPEED_RADARS, TUNNEL_FROM, TUNNEL_TO, cyc, inTunnel, lightsOn, nightAmount, rainAmount } from "./world";
 
@@ -19,15 +22,16 @@ const VIEW_BEHIND = 30;
 const TILE_LEN = 24; // metres of road per texture tile
 const STRIP_LEN = VIEW_AHEAD + VIEW_BEHIND;
 
-const TYPE_MODEL: Record<CarType, ModelKey> = {
-  m5: "m4",
+type TrafficKey = ModelKey | TrafficModelKey;
+const TYPE_MODEL: Record<CarType, TrafficKey> = {
+  m5: "fox",
   "mustang-blue": "mustang",
   "mustang-black": "mustang",
-  bus: "m4",
-  suv: "m4",
-  sedan: "mustang",
-  hatch: "mustang",
-  pickup: "m4",
+  bus: "bus",
+  suv: "suv",
+  sedan: "sedan",
+  hatch: "fox",
+  pickup: "pickup",
 };
 
 const hash = (n: number) => {
@@ -234,6 +238,11 @@ export class Scene3D {
   private radars: THREE.Group[] = [];
 
   private player: THREE.Group | null = null;
+  private wing: THREE.Object3D | undefined;
+  private aero: AeroState = { lift: 0, tilt: 0 };
+  private buildings: THREE.InstancedMesh | undefined;
+  private rooftops: THREE.InstancedMesh | undefined;
+  private cityMaterial: THREE.MeshStandardMaterial | undefined;
   private playerTail: THREE.MeshStandardMaterial[] = [];
   private playerHead: THREE.MeshStandardMaterial[] = [];
   private headL: THREE.SpotLight;
@@ -244,7 +253,7 @@ export class Scene3D {
   private popT = 0;
 
 
-  private templates = new Map<ModelKey, THREE.Group>();
+  private templates = new Map<TrafficKey, THREE.Group>();
   private sprites: THREE.Sprite[] = [];
   private smokeTex: THREE.Texture;
   private sparkTex: THREE.Texture;
@@ -447,6 +456,20 @@ export class Scene3D {
 
     this.buildTunnel();
 
+    const facade = canvasTex(256, 512, g => {
+      g.fillStyle = '#a8afb0'; g.fillRect(0,0,256,512);
+      noise(g,256,512,7000,['#9aa3a5','#b6bbba','#8f999e'],[1,2]);
+      for(let y=14;y<512;y+=32) for(let x=12;x<256;x+=32) {
+        g.fillStyle = hash(x+y*2)>.73 ? '#d1c8a1' : '#3c5965';
+        g.fillRect(x,y,17,22);g.fillStyle='#ccd1d0';g.fillRect(x-1,y+22,19,2);
+      }
+    });
+    this.cityMaterial=new THREE.MeshStandardMaterial({map:facade,roughness:.72,metalness:.12,emissiveMap:facade,emissive:0xffffff,emissiveIntensity:0});
+    this.buildings=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1).translate(0,.5,0),this.cityMaterial,72);
+    this.rooftops=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial({color:0x69747c,roughness:.8}),72);
+    this.buildings.frustumCulled=this.rooftops.frustumCulled=false;
+    this.scene.add(this.buildings,this.rooftops);
+
     const concrete = new THREE.MeshStandardMaterial({ map: concreteTexture(), roughness: 0.9 });
     for (let i = 0; i < 2; i++) {
       const g = new THREE.Group();
@@ -568,7 +591,11 @@ export class Scene3D {
       return null;
     });
     if (player) this.setupPlayer(player.clone(true));
-    const keys: ModelKey[] = ["m4", "mustang"];
+    for (const key of ['fox','sedan','suv','pickup','bus'] as TrafficModelKey[]) {
+      const template = createTrafficModel(key);
+      this.templates.set(key, template); this.setupTrafficBatch(key, template);
+    }
+    const keys: ModelKey[] = ["mustang"];
     await Promise.all(
       keys.map((k) =>
         loadCar(k)
@@ -636,6 +663,7 @@ export class Scene3D {
       car.add(beam);
     }
     this.player = car;
+    this.wing = car.getObjectByName('active-wing');
     this.scene.add(car);
   }
 
@@ -689,28 +717,28 @@ export class Scene3D {
     return { group: g, outer: outer.mat, core: core.mat, glow, light };
   }
 
-  private trafficBatches = new Map<ModelKey, THREE.InstancedMesh[]>();
-  private trafficSignals = new Map<ModelKey, THREE.InstancedMesh>();
+  private trafficBatches = new Map<TrafficKey, THREE.InstancedMesh[]>();
+  private trafficSignals = new Map<TrafficKey, THREE.InstancedMesh>();
 
-  private setupTrafficBatch(key: ModelKey, template: THREE.Group) {
+  private setupTrafficBatch(key: TrafficKey, template: THREE.Group) {
     const parts: THREE.InstancedMesh[] = [];
     template.traverse((object) => {
       if (!(object instanceof THREE.Mesh)) return;
       const materials = Array.isArray(object.material) ? object.material : [object.material];
       for (const mat of materials) mat.forceSinglePass = true;
-      const mesh = new THREE.InstancedMesh(object.geometry, object.material, 48);
+      const mesh = new THREE.InstancedMesh(object.geometry, object.material, 128);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.frustumCulled = false;
       mesh.count = 0;
       this.scene.add(mesh);
       parts.push(mesh);
     });
-    const shadow = new THREE.InstancedMesh(new THREE.PlaneGeometry(2, 4.6).rotateX(-Math.PI / 2).translate(0, 0.018, 0), new THREE.MeshBasicMaterial({ map: this.smokeTex, color: 0x000000, transparent: true, opacity: 0.55, depthWrite: false }), 48);
+    const shadow = new THREE.InstancedMesh(new THREE.PlaneGeometry(key === 'bus' ? 2.5 : 2, key === 'bus' ? 10.8 : 4.6).rotateX(-Math.PI / 2).translate(0, 0.018, 0), new THREE.MeshBasicMaterial({ map: this.smokeTex, color: 0x000000, transparent: true, opacity: 0.55, depthWrite: false }), 128);
     shadow.frustumCulled = false;
     this.scene.add(shadow);
     parts.push(shadow);
     this.trafficBatches.set(key, parts);
-    const indicators = new THREE.InstancedMesh(new THREE.BoxGeometry(0.13, 0.08, 0.04), new THREE.MeshBasicMaterial({ color: 0xffa000 }), 96);
+    const indicators = new THREE.InstancedMesh(new THREE.BoxGeometry(0.13, 0.08, 0.04), new THREE.MeshBasicMaterial({ color: 0xffa000 }), 256);
     indicators.frustumCulled = false;
     indicators.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.scene.add(indicators);
@@ -780,6 +808,20 @@ export class Scene3D {
       p.rotation.y = -s.player.rot;
       // body roll / pitch from steering + throttle
       p.rotation.z = s.player.rot * 0.25;
+      this.aero = stepAero(this.aero, s.player.speed, s.braking, dt);
+      if (this.wing) {
+        this.wing.position.y = .96 + this.aero.lift * .28;
+        this.wing.rotation.x = this.aero.tilt;
+        for(const support of p.children.filter(c => c.name === 'wing-support')) {
+          support.visible = this.aero.lift > .02;
+          support.scale.y = this.aero.lift;
+          support.position.y = .96 + this.aero.lift * .14;
+        }
+        if (import.meta.env.DEV) {
+          this.canvas.dataset['wingLift'] = this.aero.lift.toFixed(3);
+          this.canvas.dataset['wingTilt'] = this.aero.tilt.toFixed(3);
+        }
+      }
       for (const m of this.playerTail) m.emissiveIntensity = s.braking ? 4.5 : lights ? 1.6 : 0.5;
       for (const m of this.playerHead) m.emissiveIntensity = lights ? 3 : 0.6;
       for (const child of p.children) if (child.name === "road-beam") child.visible = lights;
@@ -797,7 +839,7 @@ export class Scene3D {
       const indicators = this.trafficSignals.get(model);
       for (const car of s.traffic) {
         const z = toZ(car.y);
-        if (TYPE_MODEL[car.type] !== model || z < -(this.low ? 120 : VIEW_AHEAD + 20) || z > VIEW_BEHIND || count >= 48) continue;
+        if (TYPE_MODEL[car.type] !== model || z < -TRAFFIC_DRAW_AHEAD || z > VIEW_BEHIND || count >= 128) continue;
         this.positionVector.set(toX(car.x), 0, z);
         this.quaternion.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, -car.rot);
         this.scaleVector.set(1, 1, 1);
@@ -900,6 +942,24 @@ export class Scene3D {
     const sc = this.scaleVector;
     const pos = this.positionVector;
     const tunnelAt = (z: number) => inTunnel(z);
+
+    if(this.buildings && this.rooftops) {
+      let count=0;
+      for(let n=Math.floor((pz-70)/28); n*28<pz+VIEW_AHEAD+90 && count<72; n++) {
+        for(const side of [-1,1]) {
+          const z=n*28;if(tunnelAt(z))continue;
+          const h=hash(n*13+side), height=12+hash(n*5+side)*42;
+          const x=side*(42+h*48), width=12+hash(n*7)*9, depth=12+hash(n*8)*12;
+          pos.set(x,0,-(z-pz));sc.set(width,height,depth);q.identity();m.compose(pos,q,sc);
+          this.buildings.setMatrixAt(count,m);
+          pos.set(x,height+.4,-(z-pz));sc.set(width+.4,.8,depth+.4);m.compose(pos,q,sc);
+          this.rooftops.setMatrixAt(count,m);count++;
+        }
+      }
+      this.buildings.count=this.rooftops.count=count;
+      this.buildings.instanceMatrix.needsUpdate=this.rooftops.instanceMatrix.needsUpdate=true;
+      if(this.cityMaterial)this.cityMaterial.emissiveIntensity=night*.55;
+    }
 
     // guardrail posts every 4 m
     let i = 0;

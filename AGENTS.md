@@ -16,3 +16,5 @@
 - Dev-only `window.__game` exposes live `state`, `input`, and fixed-step `sim(seconds)`; canvas data attributes expose modelsReady, drawCalls, triangles and quality, and the wrapper has data-scene-ready — reuse these for software-renderer verification.
 - Engine sound is pitch-matched granular playback of one real full-throttle recording (`src/game/audio.ts`), with a gearbox model driving rpm — avoids the "toy car" effect of pitch-shifting a short loop.
 - Traffic passability rules live in `src/game/traffic.ts` (pure, unit-tested): cars may never line up across every lane, so the player always has a way through.
+- Spawn horizons, vehicle footprints, selection and lane motion live in pure `traffic-rules.ts`; bespoke traffic geometry lives in `traffic-models.ts` and shares material instances — keeps physical sizes and rendering consistent.
+- Preserve the extracted original rear Body panel under `active-wing`; pure `aero.ts` drives its deployment without rebatching the moving geometry — the actual car panel moves, not an overlay.

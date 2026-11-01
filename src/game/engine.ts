@@ -1,4 +1,5 @@
 import type { GameAudio } from "./audio";
+import { FOOTPRINTS, TRAFFIC_SPAWN_AHEAD, TRAFFIC_KEEP_AHEAD, TRAFFIC_KEEP_BEHIND, pickTrafficType, laneMotion, trafficScreenY } from './traffic-rules';
 import { pickGear } from "./gearbox";
 import { ESCAPE_GAP, POLICE_MAX, START_DELAY, START_GAP, escapeProgress, policeSpeedStep, policeZone, isRearHit, choosePoliceLane, type Zone } from "./police";
 import { blockedLanes, isLaneClear, laneChangeOk, wallSpeedCaps, type CarType, type LaneCar, type YieldState } from "./traffic";
@@ -313,7 +314,15 @@ export class RacingEngine {
     if (prevLaneW) {
       const rel = (this.player.x - prevRoadX) / (prevLaneW * LANES);
       this.player.x = this.roadX + rel * this.roadW;
-      for (const t of this.traffic) t.x = this.laneX(t.lane);
+      for (const t of this.traffic) {
+        t.x = this.roadX + ((t.x - prevRoadX) / prevLaneW) * this.laneW;
+        t.vx *= this.laneW / prevLaneW;
+        if (this.threeD) {
+          const dims = FOOTPRINTS[t.type];
+          t.w = dims[0] * this.k; t.h = dims[1] * this.k;
+          t.y = trafficScreenY(this.baseY, t.z, this.pz, this.k);
+        }
+      }
     } else {
       this.player.x = this.laneX(1);
     }
@@ -379,7 +388,7 @@ export class RacingEngine {
     this.shake = 0;
     this.flash = 0;
     this.gameOverOutcome = "crash";
-    this.nextSpawnZ = (this.baseY + 260) / this.k;
+    this.nextSpawnZ = this.threeD ? TRAFFIC_SPAWN_AHEAD : (this.baseY + 260) / this.k;
 
     // Reset gameplay enhancements
     this.boostEnergy = 100;
@@ -975,30 +984,39 @@ export class RacingEngine {
             const movingTowardsPlayer = nearPlayer && Math.sign(this.player.x - t.x) === dir;
 
             if (!movingTowardsPlayer) {
-              const speedPx = this.laneW * 1.35; // smooth lateral velocity
-              t.x += dir * Math.min(Math.abs(dist), speedPx * dt);
-              t.rot = dir * 0.08;
+              const motion = laneMotion(t.x, t.vx, t.rot, targetX, this.laneW, t.speed, this.k, dt);
+              t.x = motion.x; t.vx = motion.vx; t.rot = motion.rot;
             } else {
-              t.rot = 0;
+              t.vx *= Math.exp(-8 * dt);
+              t.rot *= Math.exp(-6 * dt);
             }
 
             // Check arrival at target lane center
-            if (Math.abs(targetX - t.x) < 1.5) {
+            if (Math.abs(targetX - t.x) < this.laneW * .008 && Math.abs(t.vx) < this.laneW * .025) {
               t.x = targetX;
               t.rot = 0;
               t.lane = t.targetLane;
               t.yieldState = "idle";
               t.signal = 0;
+              t.vx = 0;
             }
           } else {
             // Idle state: restore normal cruise speed and stay in lane
+            const leader = lane[i - 1];
+            if (leader && leader.z - t.z < this.spanM * 4 && t.cruise > leader.speed + 8 && t.signalTimer > 3) {
+              const target = [t.lane - 1, t.lane + 1].find(to => laneChangeOk(this.traffic, t, to, {gapAhead: 24, gapBehind: 22, wallLen: this.spanM * WALL_LEN}));
+              if (target !== undefined) {
+                t.targetLane = target; t.signal = target < t.lane ? -1 : 1;
+                t.signalTimer = 0; t.yieldState = 'changing';
+              }
+            }
             if (t.originalCruise !== undefined && Math.abs(t.cruise - t.originalCruise) > 1) {
               t.cruise += (t.originalCruise - t.cruise) * (1 - Math.exp(-2.5 * dt));
             }
             const curLaneX = this.laneX(t.lane);
             t.x += (curLaneX - t.x) * (1 - Math.exp(-12 * dt));
             t.rot = 0;
-            t.signal = 0;
+            if (t.yieldState === 'idle') t.signal = 0;
           }
 
           // 2. Anti-Collision and safe spacing (cars never enter inside each other)
@@ -1012,7 +1030,7 @@ export class RacingEngine {
             }
             // Strict physical clearance so cars never overlap or cross into each other
             if (gap < minGap) {
-              t.z = ahead.z - minGap;
+              // Brake instead of moving the car backwards (visible teleport).
               t.speed = Math.min(t.speed, ahead.speed);
             }
           }
@@ -1027,13 +1045,14 @@ export class RacingEngine {
       }
     }
 
-    const behindLimit = this.threeD ? this.baseY + 40 * this.k : this.H + 260;
-    const aheadLimit = this.threeD ? this.baseY - 230 * this.k : -this.H * 1.6;
+    const behindLimit = this.threeD ? this.baseY + TRAFFIC_KEEP_BEHIND * this.k : this.H + 260;
+    const aheadLimit = this.threeD ? this.baseY - TRAFFIC_KEEP_AHEAD * this.k : -this.H * 1.6;
     this.traffic = this.traffic.filter((t) => t.y < behindLimit && t.y > aheadLimit);
   }
 
   private spawn() {
-    const aheadM = this.threeD ? 190 : (this.baseY + 260) / this.k;
+    const aheadM = this.threeD ? TRAFFIC_SPAWN_AHEAD : (this.baseY + 260) / this.k;
+    if (this.threeD) this.nextSpawnZ = Math.max(this.nextSpawnZ, this.pz + aheadM - 5);
     let guard = 0;
     while (this.nextSpawnZ < this.pz + aheadM && guard++ < 8) {
       this.trySpawn(this.nextSpawnZ);
@@ -1050,7 +1069,11 @@ export class RacingEngine {
 
     // Vehicle types palette
     const vehiclePool: { type: CarType; img: HTMLImageElement; minSpeed: number; maxSpeed: number; preferredLane?: number }[] = this.threeD ? [
-      { type: "m5", img: this.images.m5, minSpeed: 110, maxSpeed: 170 },
+      { type: "hatch", img: this.images.hatch, minSpeed: 85, maxSpeed: 120 },
+      { type: "sedan", img: this.images.sedan, minSpeed: 95, maxSpeed: 135 },
+      { type: "suv", img: this.images.suv, minSpeed: 90, maxSpeed: 130 },
+      { type: "pickup", img: this.images.pickup, minSpeed: 85, maxSpeed: 120 },
+      { type: "bus", img: this.images.bus, minSpeed: 72, maxSpeed: 92, preferredLane: 2 },
       { type: "mustang-blue", img: this.images.mustangBlue, minSpeed: 100, maxSpeed: 160 },
       { type: "mustang-black", img: this.images.mustangBlack, minSpeed: 100, maxSpeed: 160 },
     ] : [
@@ -1064,21 +1087,22 @@ export class RacingEngine {
       { type: "mustang-black", img: this.images.mustangBlack, minSpeed: 145, maxSpeed: 200, preferredLane: 2 },
     ];
 
-    const pick = vehiclePool[Math.floor(Math.random() * vehiclePool.length)]!;
+    const type = pickTrafficType(Math.random(), Math.random(), this.traffic.at(-1)?.type);
+    const pick = this.threeD ? vehiclePool.find(v => v.type === type) : vehiclePool[Math.floor(Math.random() * vehiclePool.length)];
+    if (!pick) return;
     let lane = free[Math.floor(Math.random() * free.length)] ?? 1;
     if (pick.preferredLane !== undefined && free.includes(pick.preferredLane)) {
       lane = pick.preferredLane;
     }
 
     const ppm = this.laneW / 3.6;
-    const dims3d: Partial<Record<CarType, [number, number]>> = { m5: [1.95, 4.8], "mustang-blue": [1.92, 4.8], "mustang-black": [1.92, 4.8] };
-    const d3 = this.threeD ? dims3d[pick.type] : undefined;
+    const d3 = this.threeD ? FOOTPRINTS[pick.type] : undefined;
     const w = d3 ? d3[0] * ppm : pick.type === "bus" ? this.carW * 1.05 : this.carW * 0.94;
     const cruise = rnd(pick.minSpeed, pick.maxSpeed) + Math.min(25, this.distance / 400);
 
     this.traffic.push({
       x: this.laneX(lane),
-      y: -220,
+      y: trafficScreenY(this.baseY, z, this.pz, this.k),
       z,
       w,
       h: d3 ? d3[1] * ppm : w * (pick.img.naturalHeight / pick.img.naturalWidth),
