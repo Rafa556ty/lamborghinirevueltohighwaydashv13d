@@ -900,7 +900,8 @@ export class Scene3D {
     const sh = s.shake * 0.012;
     this.cockpit.update(s.player.rot, dt);
     if (this.cameraMode === "interior" && this.player) {
-      const ifov = 68 + speedK * 8;
+      const hfov = (78 + speedK * 8) * Math.PI / 180;
+      const ifov = Math.min(105, Math.max(62, 2 * Math.atan(Math.tan(hfov / 2) / this.camera.aspect) * 180 / Math.PI));
       if (Math.abs(this.camera.fov - ifov) > 0.05) {
         this.camera.fov = ifov;
         this.camera.updateProjectionMatrix();

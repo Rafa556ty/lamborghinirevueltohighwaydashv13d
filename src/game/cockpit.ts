@@ -59,7 +59,7 @@ export class Cockpit {
     const rim = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.022, 10, 32), alcantara);
     this.wheel.add(rim);
     for (const a of [0, Math.PI * 0.5, Math.PI]) {
-      const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.025, 0.015), carbon);
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.025, 0.015), dark);
       spoke.position.set(Math.cos(a + Math.PI) * 0.08, Math.sin(a + Math.PI) * 0.08 * (a === Math.PI * 0.5 ? 1 : 0), 0);
       spoke.rotation.z = a === Math.PI * 0.5 ? Math.PI / 2 : 0;
       if (a === Math.PI * 0.5) spoke.position.set(0, -0.085, 0);
