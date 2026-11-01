@@ -810,12 +810,12 @@ export class Scene3D {
       p.rotation.z = s.player.rot * 0.25;
       this.aero = stepAero(this.aero, s.player.speed, s.braking, dt);
       if (this.wing) {
-        this.wing.position.y = .96 + this.aero.lift * .28;
+        this.wing.position.y = .96 + this.aero.lift * .17;
         this.wing.rotation.x = this.aero.tilt;
         for(const support of p.children.filter(c => c.name === 'wing-support')) {
           support.visible = this.aero.lift > .02;
           support.scale.y = this.aero.lift;
-          support.position.y = .96 + this.aero.lift * .14;
+          support.position.y = .80 + this.aero.lift * .085;
         }
         if (import.meta.env.DEV) {
           this.canvas.dataset['wingLift'] = this.aero.lift.toFixed(3);

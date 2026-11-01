@@ -11,7 +11,7 @@ export function isolateActiveWing(root: THREE.Group): THREE.Group | null {
     const moving: number[] = [], fixed: number[] = [];
     for (let i = 0; i < position.count; i += 3) {
       let rearPanel = true;
-      for (let j = 0; j < 3; j++) if (position.getZ(i+j) < 1.96 || position.getY(i+j) < .91) rearPanel = false;
+      for (let j = 0; j < 3; j++) if (position.getZ(i+j) < 1.86 || position.getY(i+j) < .83) rearPanel = false;
       (rearPanel ? moving : fixed).push(i,i+1,i+2);
     }
     if (!moving.length) return;
@@ -27,7 +27,8 @@ export function isolateActiveWing(root: THREE.Group): THREE.Group | null {
     };
     object.geometry = subset(fixed);
     const geo = subset(moving); geo.translate(-pivot.x,-pivot.y,-pivot.z);
-    const panel = new THREE.Mesh(geo,object.material);panel.castShadow=true; wing.add(panel);
+    const mat = (object.material as THREE.Material).clone(); mat.side = THREE.DoubleSide;
+    const panel = new THREE.Mesh(geo,mat);panel.castShadow=true; wing.add(panel);
   });
   if (!wing.children.length) return null;
   wing.position.copy(pivot); root.add(wing);
