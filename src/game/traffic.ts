@@ -26,7 +26,8 @@ export function wallSpeedCaps(cars: LaneCar[], wallLen: number, lanes = 3): numb
   const caps = cars.map(() => Infinity);
   const lookAhead = wallLen * 2.5;
   for (let i = 0; i < cars.length; i++) {
-    const me = cars[i]!;
+    const me = cars[i];
+    if (!me) continue;
     if (me.hit) continue;
     const group: LaneCar[] = [];
     let complete = true;
@@ -57,7 +58,7 @@ export function wallSpeedCaps(cars: LaneCar[], wallLen: number, lanes = 3): numb
 
 /** Lanes that are blocked by a car inside the window [z - win, z + win]. */
 export function blockedLanes(cars: LaneCar[], z: number, win: number): Set<number> {
-  return new Set(cars.filter((c) => !c.hit && Math.abs(c.z - z) < win).map((c) => c.lane));
+  return new Set(cars.filter((c) => !c.hit && Math.abs(c.z - z) < win).flatMap((c) => c.yieldState === 'changing' && c.targetLane !== undefined ? [c.lane, c.targetLane] : [c.lane]));
 }
 
 /**
@@ -94,7 +95,7 @@ export function laneChangeOk(
   const lanes = o.lanes ?? 3;
   if (to < 0 || to >= lanes || to === me.lane) return false;
   for (const c of cars) {
-    if (c === me || c.hit || c.lane !== to) continue;
+    if (c === me || c.hit || (c.lane !== to && !(c.yieldState === 'changing' && c.targetLane === to))) continue;
     const dz = c.z - me.z;
     if (dz >= 0 && dz < o.gapAhead) return false;
     if (dz < 0 && -dz < o.gapBehind + Math.max(0, c.speed - me.speed) * 0.25) return false;

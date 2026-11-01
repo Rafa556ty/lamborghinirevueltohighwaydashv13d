@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { normalizeCar } from "./normalize-car";
+import { isolateActiveWing } from "./active-wing";
 export { normalizeCar } from "./normalize-car";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
@@ -166,7 +167,9 @@ export function loadCar(key: ModelKey): Promise<THREE.Group> {
             m.frustumCulled = true;
           }
         });
-        return batchCar(normalizeCar(scene, spec));
+        const result = batchCar(normalizeCar(scene, spec));
+        if (key === "revuelto") isolateActiveWing(result);
+        return result;
       });
     p.catch(() => cache.delete(key));
     cache.set(key, p);
