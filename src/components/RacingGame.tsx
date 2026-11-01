@@ -79,8 +79,6 @@ const triggerHaptic = (pattern: number | number[]) => {
 export function RacingGame() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const sceneRef = useRef<import("@/game/render3d").Scene3D | null>(null);
-  const [cameraMode, setCameraMode] = useState<"chase" | "interior">("chase");
   const canvas3dRef = useRef<HTMLCanvasElement>(null);
   const flashRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<RacingEngine | null>(null);
@@ -269,7 +267,6 @@ export function RacingGame() {
               el.dataset["sceneReady"] = "true";
             });
             scene3d = scene;
-            sceneRef.current = scene;
             scene.resize(el.clientWidth, el.clientHeight);
             engine.onRender = scene.render;
           });
@@ -522,18 +519,6 @@ export function RacingGame() {
         {/* Touch Controls Layer */}
         {playing && (
           <div className="absolute inset-0 z-10 pointer-events-none">
-            <button
-              type="button"
-              aria-label="Mudar câmera"
-              onClick={() => {
-                const next = cameraMode === "chase" ? "interior" : "chase";
-                setCameraMode(next);
-                sceneRef.current?.setCameraMode(next);
-              }}
-              className="pointer-events-auto absolute right-3 top-[17%] z-20 flex h-9 w-9 items-center justify-center rounded-full border border-hud-border bg-card/70 text-foreground backdrop-blur-xs active:scale-95"
-            >
-              <Camera className="size-4" />
-            </button>
             {/* Steering Left / Right Side Touch Areas */}
             {(["left", "right"] as const).map((side) => (
               <div
