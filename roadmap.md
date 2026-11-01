@@ -1,5 +1,13 @@
 # Roadmap — Versão 2.0 DEMO
 
+## Melhorias de trânsito e mapa
+- [ ] Corrigir aparecimentos, sumiços e teletransporte do trânsito.
+- [ ] Substituir BMW por compacto inspirado no Fox; incluir ônibus branco, SUV, sedã e caminhonete 3D.
+- [ ] Movimentos laterais naturais e reduzir presença de Mustangs.
+- [ ] Animar a asa original da Lamborghini com velocidade e frenagem.
+- [ ] Enriquecer o fundo com prédios e detalhes de estrada.
+- [ ] Verificar regras com testes e corrida no navegador.
+
 ## Finalização 3D e celular
 - [x] Corrigir orientação/renderização dos carros e remover modelos Jesko/polícia.
 - [x] Melhorar luz, reflexos e nitidez; reduzir desenhos repetidos, efeitos e custo do vidro para celulares.
