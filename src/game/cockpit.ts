@@ -65,7 +65,7 @@ export class Cockpit {
       if (a === Math.PI * 0.5) spoke.position.set(0, -0.085, 0);
       this.wheel.add(spoke);
     }
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 16), carbon);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 16), alcantara);
     hub.rotation.x = Math.PI / 2;
     this.wheel.add(hub);
     const top = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.03, 0.03), accent);
